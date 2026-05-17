@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: safety-stop-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: safety-stop-redis
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: safety-stop-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: ${BACKEND_PORT}
+    ports:
+      - "${BACKEND_PORT}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # CHATWOOT DISABLED: Requires PostgreSQL pgvector extension (not in postgres:16-alpine)
+  # To enable: Use a custom PostgreSQL image with pgvector, or install it manually
+  # Chatwoot webhook integration is optional for MVP - core Safety Stop flows work without it
+  # chatwoot:
+  #   image: chatwoot/chatwoot:latest
+  #   container_name: safety-stop-chatwoot
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     RAILS_ENV: production
+  #     NODE_ENV: production
+  #     INSTALLATION_ENV: docker
+  #     SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE}
+  #     FRONTEND_URL: ${CHATWOOT_FRONTEND_URL}
+  #     DATABASE_URL: ${CHATWOOT_DATABASE_URL}
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_PORT: 5432
+  #     POSTGRES_USERNAME: ${CHATWOOT_DB_USER}
+  #     POSTGRES_PASSWORD: ${CHATWOOT_DB_PASS}
+  #     POSTGRES_DATABASE: ${CHATWOOT_DB_NAME}
+  #     REDIS_URL: ${CHATWOOT_REDIS_URL}
+  #     RAILS_LOG_TO_STDOUT: "true"
+  #   command: sh -c "bundle exec rails db:chatwoot_prepare && bundle exec rails s -p 3000 -b 0.0.0.0"
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_started
+
+  # chatwoot-worker:
+  #   image: chatwoot/chatwoot:latest
+  #   container_name: safety-stop-chatwoot-worker
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     RAILS_ENV: production
+  #     NODE_ENV: production
+  #     INSTALLATION_ENV: docker
+  #     SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE}
+  #     FRONTEND_URL: ${CHATWOOT_FRONTEND_URL}
+  #     DATABASE_URL: ${CHATWOOT_DATABASE_URL}
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_PORT: 5432
+  #     POSTGRES_USERNAME: ${CHATWOOT_DB_USER}
+  #     POSTGRES_PASSWORD: ${CHATWOOT_DB_PASS}
+  #     POSTGRES_DATABASE: ${CHATWOOT_DB_NAME}
+  #     REDIS_URL: ${CHATWOOT_REDIS_URL}
+  #     RAILS_LOG_TO_STDOUT: "true"
+  #   command: bundle exec sidekiq -C config/sidekiq.yml
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_started
+
+  dispo-now:
+    image: riv0manana/dispo.now:latest
+    container_name: safety-stop-dispo-now
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DISPO_DATABASE_URL}
+      JWT_SECRET: ${DISPO_JWT_SECRET}
+    ports:
+      - "${DISPO_NOW_PORT}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
